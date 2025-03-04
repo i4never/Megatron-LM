@@ -49,6 +49,9 @@ qk_rope_head_dim=64
 rope_theta=10000
 # MoE
 moe_layer_freq="([0]*1+[1]*15)"
+moe_router_num_groups=8
+moe_router_bias_update_rate=1e-4    # TODO: 需要调参
+moe_router_topk_scaling_factor=2.5
 
 # Train
 train_iters=5000
@@ -61,7 +64,7 @@ gbs=16
 # Load Save
 run_name="dev-deepseekv3-TP${tp}-CP${cp}-EP${ep}-PP${pp}-L${num_layers}-H${hidden_size}-NE${num_experts}"
 save="/mnt/m2/cong.fu/models/megatron/${timestamp}-${run_name}"
-save_interval=1000
+save_interval=2000
 
 ################################################################
 # torchrun distributed args start
@@ -149,11 +152,16 @@ moe_args=(
     --moe-router-topk ${router_topk}
     --num-experts ${num_experts}
     --moe-ffn-hidden-size ${moe_intermediate_size}
-    --moe-router-load-balancing-type aux_loss   # TODO: 需要调查
+    --moe-router-load-balancing-type seq_aux_loss
     --moe-aux-loss-coeff 0.001
     --moe-layer-freq ${moe_layer_freq}
     --moe-shared-expert-intermediate-size $((${moe_intermediate_size} * ${num_shared_experts}))
     --moe-shared-expert-overlap # why not?
+    --moe-router-score-function sigmoid
+    --moe-router-enable-expert-bias
+    --moe-router-bias-update-rate ${moe_router_bias_update_rate}
+    --moe-router-topk-scaling-factor ${moe_router_topk_scaling_factor}
+    --moe-router-num-groups ${moe_router_num_groups}
 )
 # Model args end
 ################################################################
