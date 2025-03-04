@@ -102,7 +102,7 @@ class Encoder(object):
                     doc_ids.extend(sentence_ids)
                     sentence_lens.append(len(sentence_ids))
             if len(doc_ids) > 0 and self.args.append_eod:
-                doc_ids.append(Encoder.tokenizer.eod)
+                doc_ids.append(self.args.eod_token_id)
                 sentence_lens[-1] += 1
             ids[key] = doc_ids
             lens[key] = sentence_lens
@@ -202,6 +202,8 @@ def get_args():
     group = parser.add_argument_group(title='tokenization process')
     group.add_argument('--append-eod', action='store_true',
                        help='Append an <eod> token to the end of a document.')
+    group.add_argument('--eod-token-id', type=int, required=False, default=None,
+                       help='Eod token id')
     group.add_argument('--lang', type=str, default='english',
                        help='Language to use for NLTK-powered sentence splitting.')
     group = parser.add_argument_group(title='output data')
@@ -255,6 +257,8 @@ def check_files_exist(in_ss_out_names, key, num_partitions):
 
 def main():
     args = get_args()
+    if args.append_eod:
+        assert args.eod_token_id is not None
 
     if args.split_sentences:
         if nltk_available:
