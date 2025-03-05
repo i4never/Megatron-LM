@@ -562,7 +562,7 @@ def save_to_aux_losses_tracker(
     tracker = parallel_state.get_moe_layer_wise_logging_tracker()
     if name not in tracker:
         tracker[name] = {}
-        tracker[name]["values"] = torch.zeros(num_layers, device=loss.device)
+        tracker[name]["values"] = torch.zeros(*(num_layers, *loss.shape), device=loss.device)
     tracker[name]["values"][layer_number - 1] += loss.detach()  # Aggregate the loss for the layer.
     tracker[name]["reduce_group"] = reduce_group
     tracker[name]["avg_group"] = avg_group
@@ -605,6 +605,16 @@ def track_moe_metrics(
     if writer is not None:
         aux_losses = {k: v['values'].float() * loss_scale for k, v in tracker.items()}
         for name, loss_list in aux_losses.items():
+            if name == 'routing':
+                routing_list = loss_list
+                all_layer_routing_prob = routing_list.sum(dim=0) / (routing_list.sum() + 1e-20)
+                all_layer_routing_prob = torch.clamp_(all_layer_routing_prob, min=1e-20)
+                routing_entropy = -(torch.log(all_layer_routing_prob) * all_layer_routing_prob).sum()
+                writer.add_scalar('routing_entropy', routing_entropy.item(), iteration)
+                if wandb_writer:
+                    wandb_writer.log({'routing_entropy': routing_entropy}, iteration)
+                continue
+
             if total_loss_dict is not None:
                 if name not in total_loss_dict:
                     total_loss_dict[name] = loss_list.mean()

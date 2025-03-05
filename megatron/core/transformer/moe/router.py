@@ -187,7 +187,7 @@ class TopKRouter(Router):
                 topk=self.topk,
             )
             probs = self.apply_load_balancing_loss(
-                activation=probs, load_balancing_loss_func=aux_loss_func
+                activation=probs, load_balancing_loss_func=aux_loss_func, routing_map=routing_map
             )
         return probs, routing_map
 
@@ -210,7 +210,14 @@ class TopKRouter(Router):
         )
 
         if self.training:
-            scores = torch.softmax(logits, dim=-1, dtype=torch.float32)
+            if self.score_function == "softmax":
+                scores = torch.softmax(logits, dim=-1, dtype=torch.float32)
+            elif self.score_function == "sigmoid":
+                # according to https://arxiv.org/abs/2412.19437
+                scores = torch.sigmoid(logits)  # [bsz * len, ne]
+                scores = scores / scores.sum(dim=0)
+            else:
+                raise ValueError(f"Invalid score_function: {self.score_function}")
             aux_loss_func = partial(
                 sequence_load_balancing_loss_func,
                 probs=scores,
@@ -220,13 +227,13 @@ class TopKRouter(Router):
                 topk=self.topk,
             )
             probs = self.apply_load_balancing_loss(
-                activation=probs, load_balancing_loss_func=aux_loss_func
+                activation=probs, load_balancing_loss_func=aux_loss_func, routing_map=routing_map
             )
 
         return probs, routing_map
 
     def apply_load_balancing_loss(
-        self, activation: torch.Tensor, load_balancing_loss_func: Callable
+        self, activation: torch.Tensor, load_balancing_loss_func: Callable, routing_map: torch.Tensor
     ):
         """Calculate auxiliary loss, attach gradient function to activation and add to logging."""
         moe_aux_loss_coeff = self.config.moe_aux_loss_coeff
@@ -245,6 +252,13 @@ class TopKRouter(Router):
         save_to_aux_losses_tracker(
             "load_balancing_loss",
             aux_loss / moe_aux_loss_coeff,
+            self.layer_number,
+            self.config.num_layers,
+            reduce_group=sequence_partition_group,
+        )
+        save_to_aux_losses_tracker(
+            "routing",
+            routing_map.sum(dim=0), # [num_experts]
             self.layer_number,
             self.config.num_layers,
             reduce_group=sequence_partition_group,
