@@ -13,6 +13,7 @@ import sys
 import threading
 import time
 import traceback
+import warnings
 from dataclasses import dataclass
 from datetime import datetime
 from functools import reduce, wraps
@@ -149,16 +150,22 @@ def experimental_cls(introduced_with_version: str):
                 cls.__name__,
             )
 
-        def wrapped_func():
+        def wrapped_func(cls):
 
-            if config.ENABLE_EXPERIMENTAL is not True:
-                raise ExperimentalNotEnabledError(f"Flag {config.ENABLE_EXPERIMENTAL} not enabled.")
+            def check_experimental(self, name):
+                if config.ENABLE_EXPERIMENTAL is not True:
+                    raise ExperimentalNotEnabledError(
+                        f"Flag {config.ENABLE_EXPERIMENTAL} not enabled."
+                    )
+                logger.info("Setting ENABLE_EXPERIMENTAL=True will run experimental code.")
 
-            logger.info("Setting ENABLE_EXPERIMENTAL=True will run experimental code.")
+                return self().__getattribute__(name)
+
+            cls.__getattribute__ = check_experimental
 
             return cls
 
-        return wrapped_func
+        return wrapped_func(cls)
 
     return validator
 
@@ -228,6 +235,17 @@ def divide(numerator, denominator):
     the division value."""
     ensure_divisibility(numerator, denominator)
     return numerator // denominator
+
+
+def deprecate_inference_params(inference_context, inference_params):
+    """Print warning for deprecated `inference_params`."""
+    if inference_context is None and inference_params is not None:
+        warnings.warn(
+            "`inference_params` renamed to `inference_context`, and will be "
+            "removed in `megatron-core` 0.13."
+        )
+        return inference_params
+    return inference_context
 
 
 def get_attr_wrapped_model(model, attr, allow_none=True, return_model_obj=False):
