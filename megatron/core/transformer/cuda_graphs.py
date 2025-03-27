@@ -29,8 +29,6 @@ try:
     from transformer_engine.pytorch.graph import set_capture_start as te_set_capture_start
     from transformer_engine.pytorch.module.base import TransformerEngineBaseModule
 
-    from megatron.core.extensions.transformer_engine import TECudaRNGStatesTracker
-
     HAVE_TE_GRAPHS = True
 except:
     HAVE_TE_GRAPHS = False
@@ -674,7 +672,7 @@ class _CudaGraphRunner(torch.nn.Module):
         if len(args) != len(self.fwd_graph_input_args):
             return False
         for arg, graph_arg in zip(args, self.fwd_graph_input_args):
-            if not check(args, graph_arg):
+            if not check(arg, graph_arg):
                 return False
 
         if kwargs.keys() != self.fwd_graph_input_kwargs.keys():
@@ -760,6 +758,13 @@ class CudaGraphManager(torch.nn.Module):
         super().__init__()
 
         rng_tracker = get_cuda_rng_tracker()
+
+        # need to delay the import here to avoid a circular import
+        try:
+            from megatron.core.extensions.transformer_engine import TECudaRNGStatesTracker
+        except ImportError:
+            TECudaRNGStatesTracker = None
+
         assert (
             rng_tracker.is_inference_rng_tracker
             or (HAVE_TE_GRAPHS and isinstance(rng_tracker, TECudaRNGStatesTracker))
